@@ -9,6 +9,9 @@
     "reset-users": "node scripts/resetUsersCollection.js",
     "add-test-data": "node scripts/addTestData.js"
   },
+  "engines": {
+    "node": ">=14.0.0"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

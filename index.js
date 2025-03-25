@@ -10,14 +10,16 @@ import mediaRoute from "./routes/media.route.js";
 import purchaseRoute from "./routes/purchaseCourse.route.js";
 import courseProgressRoute from "./routes/courseProgress.route.js";
 import instructorCourseRoute from "./routes/instructor/course.route.js";
+import app from './app.js';
+import { config } from 'dotenv';
 
-dotenv.config({});
+config();
 
 // call database connection here
 connectDB();
-const app = express();
 
-const PORT = process.env.PORT || 3001;
+// Use Railway's assigned port or fallback to 5000
+const PORT = process.env.PORT || 5000;
 
 // Basic middleware
 app.use(cookieParser());
@@ -97,7 +99,7 @@ app.use((err, req, res, next) => {
 });
  
 app.listen(PORT, () => {
-    console.log(`Server listen at port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 })
 
 
