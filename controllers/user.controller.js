@@ -8,10 +8,25 @@ import jwt from "jsonwebtoken";
 
 export const register = async (req,res) => {
     try {
-        console.log('Registration attempt with data:', { ...req.body, password: '[HIDDEN]' });
+        console.log('Registration attempt - Full request body:', { 
+            ...req.body, 
+            password: req.body.password ? '[HIDDEN]' : undefined 
+        });
         
         const {name, phone_number, password, email} = req.body;
+        console.log('Extracted registration data:', {
+            name: name || 'not provided',
+            phone_number: phone_number || 'not provided',
+            email: email || 'not provided',
+            passwordProvided: !!password
+        });
+
         if(!name || !phone_number || !password){
+            console.log('Missing required fields:', {
+                name: !name,
+                phone_number: !phone_number,
+                password: !password
+            });
             return res.status(400).json({
                 success:false,
                 message:"All fields are required."
@@ -21,6 +36,7 @@ export const register = async (req,res) => {
         // Validate password strength
         const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,50}$/;
         if (!passwordRegex.test(password)) {
+            console.log('Password validation failed');
             return res.status(400).json({
                 success: false,
                 message: "Password must be 8-50 characters and include at least one uppercase letter, lowercase letter, number, and special character."
@@ -31,6 +47,7 @@ export const register = async (req,res) => {
         if (email) {
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(email)) {
+                console.log('Email validation failed:', email);
                 return res.status(400).json({
                     success: false,
                     message: "Please provide a valid email address or leave it empty"
@@ -40,7 +57,9 @@ export const register = async (req,res) => {
 
         // Format the phone number to ensure consistent format
         let formattedPhone = phone_number;
+        console.log('Original phone number:', phone_number);
         const digitsOnly = formattedPhone.replace(/\D/g, '');
+        console.log('Digits only:', digitsOnly);
 
         // Handle different formats
         if (digitsOnly.length === 10 && /^[6-9]/.test(digitsOnly)) {
@@ -56,7 +75,13 @@ export const register = async (req,res) => {
             console.log('Phone already in correct format:', formattedPhone);
         } else {
             // Invalid format
-            console.log('Invalid phone format:', formattedPhone);
+            console.log('Invalid phone format:', {
+                original: phone_number,
+                formatted: formattedPhone,
+                digitsOnly,
+                length: digitsOnly.length,
+                startsWithValidDigit: /^[6-9]/.test(digitsOnly)
+            });
             return res.status(400).json({
                 success: false,
                 message: "Please provide a valid Indian phone number (10 digits starting with 6-9)"
@@ -66,7 +91,10 @@ export const register = async (req,res) => {
         // Validate phone with regex for extra safety
         const phoneRegex = /^\+91[6-9]\d{9}$/;
         if (!phoneRegex.test(formattedPhone)) {
-            console.log('Phone failed regex validation:', formattedPhone);
+            console.log('Phone failed regex validation:', {
+                phone: formattedPhone,
+                matchesRegex: phoneRegex.test(formattedPhone)
+            });
             return res.status(400).json({
                 success: false,
                 message: "Invalid phone number format. Must be +91 followed by a 10-digit number starting with 6-9."
@@ -90,8 +118,10 @@ export const register = async (req,res) => {
 
         // Check for duplicate email if email is provided
         if (email) {
+            console.log('Checking for existing user with email:', email);
             const existingEmailUser = await User.findOne({ email });
             if (existingEmailUser) {
+                console.log('User with email already exists:', existingEmailUser._id);
                 return res.status(400).json({
                     success: false,
                     message: "A user with this email already exists."
@@ -123,7 +153,11 @@ export const register = async (req,res) => {
             userData.email = email;
         }
         
-        console.log('Creating new user');
+        console.log('Creating new user with data:', {
+            ...userData,
+            password: '[HIDDEN]',
+            otp: '[HIDDEN]'
+        });
         const newUser = await User.create(userData);
 
         console.log('User created with ID:', newUser._id);
@@ -132,12 +166,14 @@ export const register = async (req,res) => {
         // Send OTP via available methods
         const smsSent = await sendSMSOTP(formattedPhone, otp, email, name);
         if(!smsSent){
+            console.log('Failed to send OTP');
             return res.status(500).json({
                 success:false,
                 message:"Failed to send verification code. Please try again later."
             })
         }
 
+        console.log('Registration successful, returning response');
         return res.status(201).json({
             success:true,
             message:"User registered successfully. Please verify your phone number with the verification code sent.",
@@ -145,6 +181,7 @@ export const register = async (req,res) => {
         })
     } catch (error) {
         console.error('Registration error:', error);
+        console.error('Error stack:', error.stack);
         
         // Handle duplicate key errors more specifically
         if (error.code === 11000) {
@@ -152,6 +189,7 @@ export const register = async (req,res) => {
             const field = Object.keys(error.keyPattern)[0];
             // Always use a user-friendly field name and consistent message
             const fieldName = field === 'email' ? 'email' : 'phone number';
+            console.log('Duplicate key error:', { field, pattern: error.keyPattern });
             return res.status(400).json({
                 success: false,
                 message: `A user with this ${fieldName} already exists.`,
