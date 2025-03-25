@@ -7,28 +7,37 @@ config();
 
 const app = express();
 
-// Middlewares
+// CORS configuration
 app.use(cors());
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Simple root route
+// Health check route
 app.get('/', (req, res) => {
-  res.json({ message: 'Welcome to LMS API' });
+  res.json({ message: 'Server is running!' });
 });
 
-// Import routes
+// Routes
 import userRouter from './routes/user.route.js';
 import courseRouter from './routes/course.route.js';
 import purchaseCourseRouter from './routes/purchaseCourse.route.js';
 import courseProgressRouter from './routes/courseProgress.route.js';
 
-// Use routes
-app.use('/api/v1', userRouter);
-app.use('/api/v1', courseRouter);
-app.use('/api/v1', purchaseCourseRouter);
-app.use('/api/v1', courseProgressRouter);
+// API routes
+app.use('/api/v1/users', userRouter);
+app.use('/api/v1/courses', courseRouter);
+app.use('/api/v1/purchases', purchaseCourseRouter);
+app.use('/api/v1/progress', courseProgressRouter);
+
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `Cannot ${req.method} ${req.originalUrl}`
+  });
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
