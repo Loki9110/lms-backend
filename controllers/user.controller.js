@@ -58,6 +58,8 @@ export const register = async (req,res) => {
         // Format the phone number to ensure consistent format
         let formattedPhone = phone_number;
         console.log('Original phone number:', phone_number);
+        
+        // Remove all non-digit characters
         const digitsOnly = formattedPhone.replace(/\D/g, '');
         console.log('Digits only:', digitsOnly);
 
@@ -88,97 +90,83 @@ export const register = async (req,res) => {
             });
         }
 
-        // Validate phone with regex for extra safety
-        const phoneRegex = /^\+91[6-9]\d{9}$/;
-        if (!phoneRegex.test(formattedPhone)) {
-            console.log('Phone failed regex validation:', {
-                phone: formattedPhone,
-                matchesRegex: phoneRegex.test(formattedPhone)
+        // Check if user already exists
+        const existingUser = await User.findOne({
+            $or: [
+                { phone_number: formattedPhone },
+                ...(email ? [{ email }] : [])
+            ]
+        });
+
+        if (existingUser) {
+            console.log('User already exists:', {
+                phone: existingUser.phone_number,
+                email: existingUser.email
             });
             return res.status(400).json({
                 success: false,
-                message: "Invalid phone number format. Must be +91 followed by a 10-digit number starting with 6-9."
+                message: "User with this phone number or email already exists"
             });
         }
 
-        // Log all users in the database to help debug the issue
-        console.log('Current users in database:');
-        const allUsers = await User.find({}).select('phone_number email name role');
-        console.log('All existing users:', JSON.stringify(allUsers, null, 2));
-
-        console.log('Checking for existing user with phone number:', formattedPhone);
-        const user = await User.findOne({phone_number: formattedPhone});
-        if(user){
-            console.log('User already exists with ID:', user._id);
-            return res.status(400).json({
-                success:false,
-                message:"A user with this phone number already exists."
-            })
-        }
-
-        // Check for duplicate email if email is provided
-        if (email) {
-            console.log('Checking for existing user with email:', email);
-            const existingEmailUser = await User.findOne({ email });
-            if (existingEmailUser) {
-                console.log('User with email already exists:', existingEmailUser._id);
-                return res.status(400).json({
-                    success: false,
-                    message: "A user with this email already exists."
-                });
-            }
-        }
-
         // Generate OTP
-        console.log('Generating OTP for new user');
         const otp = generateOTP();
-        const otpExpiryTime = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+        console.log('Generated OTP:', otp);
 
-        console.log('Hashing password');
-        const hashedPassword = await bcrypt.hash(password, 10);
-        
-        // Create user data object
-        const userData = {
+        // Hash password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Create new user
+        const user = await User.create({
             name,
             phone_number: formattedPhone,
+            email,
             password: hashedPassword,
             otp: {
                 code: otp,
-                expiresAt: otpExpiryTime
+                expiresAt: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
             }
-        };
-        
-        // Add email if provided
-        if (email) {
-            userData.email = email;
-        }
-        
-        console.log('Creating new user with data:', {
-            ...userData,
-            password: '[HIDDEN]',
-            otp: '[HIDDEN]'
         });
-        const newUser = await User.create(userData);
 
-        console.log('User created with ID:', newUser._id);
-        console.log('Attempting to send OTP');
+        console.log('User created successfully:', {
+            id: user._id,
+            name: user.name,
+            phone: user.phone_number,
+            email: user.email
+        });
 
-        // Send OTP via available methods
-        const smsSent = await sendSMSOTP(formattedPhone, otp, email, name);
-        if(!smsSent){
-            console.log('Failed to send OTP');
-            return res.status(500).json({
-                success:false,
-                message:"Failed to send verification code. Please try again later."
-            })
+        // Send OTP
+        try {
+            await sendSMSOTP(formattedPhone, otp);
+            console.log('OTP sent successfully');
+        } catch (error) {
+            console.error('Failed to send OTP:', error);
+            // Don't fail registration if OTP sending fails
         }
 
-        console.log('Registration successful, returning response');
+        // Generate token
+        const token = generateToken(user._id);
+
+        // Set cookie
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        });
+
         return res.status(201).json({
-            success:true,
-            message:"User registered successfully. Please verify your phone number with the verification code sent.",
-            userId: newUser._id
-        })
+            success: true,
+            message: "Registration successful. Please verify your phone number.",
+            user: {
+                id: user._id,
+                name: user.name,
+                phone: user.phone_number,
+                email: user.email,
+                isVerified: user.isVerified
+            }
+        });
     } catch (error) {
         console.error('Registration error:', error);
         console.error('Error stack:', error.stack);
