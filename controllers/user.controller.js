@@ -402,33 +402,41 @@ export const login = async (req, res) => {
             });
         }
 
-        // Generate token
-        const token = generateToken(user._id);
-        
-        // Update last login
-        user.lastLogin = new Date();
-        await user.save();
+        try {
+            // Generate token
+            const token = generateToken(user._id);
+            
+            // Update last login
+            user.lastLogin = new Date();
+            await user.save();
 
-        // Set cookie
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-        });
+            // Set cookie
+            res.cookie('token', token, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'lax', // Changed from strict to lax for better compatibility
+                maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+            });
 
-        return res.status(200).json({
-            success: true,
-            message: "Login successful",
-            user: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                phone: user.phone_number,
-                role: user.role,
-                isVerified: user.isVerified
-            }
-        });
+            return res.status(200).json({
+                success: true,
+                message: "Login successful",
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    phone: user.phone_number,
+                    role: user.role,
+                    isVerified: user.isVerified
+                }
+            });
+        } catch (tokenError) {
+            console.error('Token generation error:', tokenError);
+            return res.status(500).json({
+                success: false,
+                message: "Login failed due to authentication error"
+            });
+        }
     } catch (error) {
         console.error('Login error:', error);
         console.error('Error stack:', error.stack);
