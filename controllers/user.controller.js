@@ -320,22 +320,27 @@ export const resendOTP = async (req, res) => {
 
 export const login = async (req, res) => {
     try {
-        console.log('Login attempt with data:', { ...req.body, password: '[HIDDEN]' });
+        console.log('Login attempt - Full request body:', { 
+            ...req.body, 
+            password: req.body.password ? '[HIDDEN]' : undefined 
+        });
         
         const { phone_number, email, password } = req.body;
         
         // Check if either phone or email is provided
         if (!phone_number && !email) {
+            console.log('Login failed: No phone or email provided');
             return res.status(400).json({
                 success: false,
-                message: "Either phone number or email is required."
+                message: "Please provide either phone number or email"
             });
         }
 
         if (!password) {
+            console.log('Login failed: No password provided');
             return res.status(400).json({
                 success: false,
-                message: "Password is required."
+                message: "Password is required"
             });
         }
         
@@ -347,6 +352,11 @@ export const login = async (req, res) => {
             // Format phone number consistently
             let formattedPhone = phone_number;
             const digitsOnly = formattedPhone.replace(/\D/g, '');
+            console.log('Phone number processing:', {
+                original: phone_number,
+                digitsOnly,
+                length: digitsOnly.length
+            });
             
             // Handle different formats
             if (digitsOnly.length === 10 && /^[6-9]/.test(digitsOnly)) {
@@ -355,68 +365,80 @@ export const login = async (req, res) => {
                 formattedPhone = `+${digitsOnly}`;
             }
             
-            // Validate with regex
-            const phoneRegex = /^\+91[6-9]\d{9}$/;
-            if (!phoneRegex.test(formattedPhone)) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid phone number format."
-                });
-            }
-            
+            console.log('Formatted phone:', formattedPhone);
             searchQuery.phone_number = formattedPhone;
-            console.log('Searching for user by phone:', formattedPhone);
         } else {
-            // Validate email format
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailRegex.test(email)) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid email format."
-                });
-            }
-            
             searchQuery.email = email;
-            console.log('Searching for user by email:', email);
         }
         
+        console.log('Searching for user with query:', searchQuery);
         user = await User.findOne(searchQuery);
         
         if (!user) {
-            console.log('User not found with provided credentials');
+            console.log('No user found with query:', searchQuery);
             return res.status(404).json({
                 success: false,
-                message: "No account found with these credentials."
+                message: "No account found with these credentials"
             });
         }
         
-        console.log('Found user:', { id: user._id, verified: user.verified });
+        console.log('User found:', {
+            id: user._id,
+            isVerified: user.isVerified,
+            hasPassword: !!user.password
+        });
         
         // Verify password
         const isPasswordValid = await bcrypt.compare(password, user.password);
+        console.log('Password validation:', {
+            isValid: isPasswordValid,
+            userHasPassword: !!user.password
+        });
+
         if (!isPasswordValid) {
-            console.log('Invalid password');
             return res.status(401).json({
                 success: false,
-                message: "Invalid credentials."
+                message: "Invalid password"
             });
         }
+
+        // Generate token
+        const token = generateToken(user._id);
         
-        // Update last login time
+        // Update last login
         user.lastLogin = new Date();
         await user.save();
 
-        // Use the generateToken helper to create and set the JWT cookie
-        return generateToken(res, user, "Login successful.");
+        // Set cookie
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Login successful",
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                phone: user.phone_number,
+                role: user.role,
+                isVerified: user.isVerified
+            }
+        });
     } catch (error) {
         console.error('Login error:', error);
+        console.error('Error stack:', error.stack);
         return res.status(500).json({
             success: false,
             message: "Login failed. Please try again later.",
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
-}
+};
 
 export const logout = async (_,res) => {
     try {
