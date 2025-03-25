@@ -3,6 +3,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { config } from 'dotenv';
 import connectDB from './database/db.js';
+import mongoose from 'mongoose';
 
 config();
 
@@ -28,6 +29,31 @@ app.use(cookieParser());
 // Health check route
 app.get('/', (req, res) => {
   res.json({ message: 'Server is running!' });
+});
+
+// Direct test route for MongoDB
+app.get('/test-mongo', async (req, res) => {
+    try {
+        const state = mongoose.connection.readyState;
+        const states = {
+            0: 'disconnected',
+            1: 'connected',
+            2: 'connecting',
+            3: 'disconnecting',
+        };
+        res.json({
+            success: true,
+            connection_state: states[state],
+            message: "MongoDB connection test route"
+        });
+    } catch (error) {
+        console.error('Test route error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            message: "Test route failed"
+        });
+    }
 });
 
 // Routes
@@ -62,12 +88,6 @@ app.use((err, req, res, next) => {
     message: err.message || 'Something went wrong!',
     error: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
-});
-
-// Start the server
-const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
 });
 
 export default app; 
